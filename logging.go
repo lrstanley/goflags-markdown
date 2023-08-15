@@ -23,27 +23,27 @@ import (
 //
 // Example (where you can set LOG_LEVEL as an environment variable, for example):
 //
-//   type Flags struct {
-//   	Debug    bool               `long:"debug" env:"DEBUG" description:"enable debugging"`
-//   	Log      *chix.LoggerConfig `group:"Logging Options" namespace:"log" env-namespace:"LOG"`
-//   }
-//   [...]
-//   cli.Log.New(cli.Debug)
+//	type Flags struct {
+//		Debug    bool               `name:"debug" help:"enable debugging"`
+//		Log      *chix.LoggerConfig `embed:"" group:"Logging Options" prefix:"log."`
+//	}
+//	[...]
+//	cli.Log.New(cli.Debug)
 type LoggerConfig struct {
 	// Quiet disables all logging.
-	Quiet bool `env:"QUIET" long:"quiet" description:"disable logging to stdout (also: see levels)"`
+	Quiet bool `name:"quiet" help:"disable logging to stdout (also: see levels)"`
 
 	// Level is the minimum level of log messages to output, must be one of info|warn|error|debug|fatal.
-	Level string `env:"LEVEL" long:"level" default:"info" choice:"debug" choice:"info" choice:"warn" choice:"error" choice:"fatal" description:"logging level"`
+	Level string `name:"level" default:"info" enum:"debug,info,warn,error,fatal" help:"logging level"`
 
 	// JSON enables JSON logging.
-	JSON bool `env:"JSON" long:"json" description:"output logs in JSON format"`
+	JSON bool `name:"json" help:"output logs in JSON format"`
 
 	// Pretty enables cli-friendly logging.
-	Pretty bool `env:"PRETTY" long:"pretty" description:"output logs in a pretty colored format (cannot be easily parsed)"`
+	Pretty bool `name:"pretty" help:"output logs in a pretty colored format (cannot be easily parsed)"`
 
 	// Path is the path to the log file.
-	Path string `env:"PATH" long:"path" description:"path to log file (disables stdout logging)"`
+	Path string `name:"path" help:"path to log file (disables stdout logging)"`
 }
 
 // new parses LoggerConfig and creates a new structured logger with the
@@ -65,7 +65,7 @@ func (cli *CLI[T]) newLogger() error {
 
 	switch {
 	case cli.LoggerConfig.Path != "":
-		f, err := os.OpenFile(cli.LoggerConfig.Path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+		f, err := os.OpenFile(cli.LoggerConfig.Path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
 		if err != nil {
 			return err
 		}

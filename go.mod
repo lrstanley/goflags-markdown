@@ -3,10 +3,11 @@ module github.com/lrstanley/clix
 go 1.18
 
 require (
+	github.com/alecthomas/kong v0.8.0
 	github.com/apex/log v1.9.0
 	github.com/gookit/color v1.5.3
-	github.com/jessevdk/go-flags v1.5.0
 	github.com/joho/godotenv v1.5.1
+	golang.org/x/exp v0.0.0-20220909182711-5c715a9e8561
 	golang.org/x/sync v0.2.0
 )
 

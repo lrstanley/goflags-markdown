@@ -46,12 +46,17 @@ func (s BuildSetting) String() string {
 	return fmt.Sprintf("%s: %s", s.Key, s.Value)
 }
 
-// VersionInfo represents the version information for the CLI.
-type VersionInfo[T any] struct {
-	Name         string         `json:"name"`                     // Name of cli tool.
-	Version      string         `json:"build_version"`            // Build version.
-	Commit       string         `json:"build_commit"`             // VCS commit SHA.
-	Date         string         `json:"build_date"`               // VCS commit date.
+// VersionOptions are the options used when querying and returning version information.
+type VersionOptions struct {
+	DisableBuildSettings bool `json:"-"` // Disable printing build settings.
+	DisableDeps          bool `json:"-"` // Disable printing dependencies.
+}
+
+// Version represents the version information for the CLI.
+type Version struct {
+	options *VersionOptions `json:"-"`
+
+	Application  Application    `json:"application,omitempty"`    // Application information.
 	Settings     []BuildSetting `json:"build_settings,omitempty"` // Other information about the build.
 	Dependencies []Module       `json:"dependencies,omitempty"`   // Module dependencies.
 
@@ -59,49 +64,34 @@ type VersionInfo[T any] struct {
 	GoVersion string `json:"go_version"` // Version of Go that produced this binary.
 	OS        string `json:"os"`         // Operating system for this build.
 	Arch      string `json:"arch"`       // CPU Architecture for build build.
-
-	// Items hoisted from the parent CLI. Do not change this.
-	Links []Link `json:"links,omitempty"`
-
-	cli *CLI[T] `json:"-"`
 }
 
 // NonSensitiveVersion represents the version information for the CLI.
 type NonSensitiveVersion struct {
-	Name    string `json:"name"`          // Name of cli tool.
-	Version string `json:"build_version"` // Build version.
-	Commit  string `json:"build_commit"`  // VCS commit SHA.
-	Date    string `json:"build_date"`    // VCS commit date.
+	options *VersionOptions `json:"-"`
 
-	Command   string `json:"command"`    // Executable name where the command was called from.
-	GoVersion string `json:"go_version"` // Version of Go that produced this binary.
-	OS        string `json:"os"`         // Operating system for this build.
-	Arch      string `json:"arch"`       // CPU Architecture for build build.
-
-	// Items hoisted from the parent CLI. Do not change this.
-	Links []Link `json:"links,omitempty"`
+	Application Application `json:"application,omitempty"` // Application information.
+	Command     string      `json:"command"`               // Executable name where the command was called from.
+	GoVersion   string      `json:"go_version"`            // Version of Go that produced this binary.
+	OS          string      `json:"os"`                    // Operating system for this build.
+	Arch        string      `json:"arch"`                  // CPU Architecture for build build.
 }
 
-// NonSensitive returns a copy of VersionInfo with sensitive information removed.
-func (v *VersionInfo[T]) NonSensitive() *NonSensitiveVersion {
+// NonSensitive returns a copy of Version with sensitive information removed.
+func (v *Version) NonSensitive() *NonSensitiveVersion {
 	return &NonSensitiveVersion{
-		Name:    v.Name,
-		Version: v.Version,
-		Commit:  v.Commit,
-		Date:    v.Date,
-
-		Command:   v.Command,
-		GoVersion: v.GoVersion,
-		OS:        v.OS,
-		Arch:      v.Arch,
-
-		Links: v.Links,
+		options:     v.options,
+		Application: v.Application,
+		Command:     v.Command,
+		GoVersion:   v.GoVersion,
+		OS:          v.OS,
+		Arch:        v.Arch,
 	}
 }
 
 // GetSetting returns the value of the setting with the given key, otherwise
 // defaults to defaultValue.
-func (v *VersionInfo[T]) GetSetting(key, defaultValue string) string {
+func (v *Version) GetSetting(key, defaultValue string) string {
 	if v.Settings == nil {
 		return defaultValue
 	}
@@ -115,24 +105,24 @@ func (v *VersionInfo[T]) GetSetting(key, defaultValue string) string {
 	return defaultValue
 }
 
-func (v *VersionInfo[T]) stringBase() string {
+func (v *Version) stringBase() string {
 	w := &bytes.Buffer{}
 
-	fmt.Fprintf(w, "<cyan>%s</> :: <yellow>%s</>\n", v.Name, v.Version)
-	fmt.Fprintf(w, "|  build commit :: <green>%s</>\n", v.Commit)
-	fmt.Fprintf(w, "|    build date :: <green>%s</>\n", v.Date)
+	fmt.Fprintf(w, "<cyan>%s</> :: <yellow>%s</>\n", v.Application.Name, v.Application.Version)
+	fmt.Fprintf(w, "|  build commit :: <green>%s</>\n", v.Application.Commit)
+	fmt.Fprintf(w, "|    build date :: <green>%s</>\n", v.Application.Date)
 	fmt.Fprintf(w, "|    go version :: <green>%s %s/%s</>\n", v.GoVersion, v.OS, v.Arch)
 
-	if len(v.Links) > 0 {
+	if len(v.Application.Links) > 0 {
 		var longest int
-		for _, l := range v.Links {
+		for _, l := range v.Application.Links {
 			if len(l.Name) > longest {
 				longest = len(l.Name)
 			}
 		}
 
 		fmt.Fprintf(w, "\n<cyan>helpful links:</>\n")
-		for _, l := range v.Links {
+		for _, l := range v.Application.Links {
 			fmt.Fprintf(
 				w, "|  %s%s :: <magenta>%s</>\n",
 				strings.Repeat(" ", longest-len(l.Name)),
@@ -144,12 +134,12 @@ func (v *VersionInfo[T]) stringBase() string {
 	return w.String()
 }
 
-func (v *VersionInfo[T]) String() string {
+func (v *Version) String() string {
 	w := &bytes.Buffer{}
 
 	w.WriteString(v.stringBase())
 
-	if !v.cli.IsSet(OptDisableBuildSettings) {
+	if v.options == nil || !v.options.DisableBuildSettings {
 		var longest int
 		for _, s := range v.Settings {
 			if len(s.Key) > longest {
@@ -167,7 +157,7 @@ func (v *VersionInfo[T]) String() string {
 		}
 	}
 
-	if !v.cli.IsSet(OptDisableDeps) {
+	if v.options == nil || !v.options.DisableDeps {
 		fmt.Fprintf(w, "\n<cyan>dependencies:</>\n")
 		for _, m := range v.Dependencies {
 			if m.Replace != nil {
@@ -186,22 +176,15 @@ func (v *VersionInfo[T]) String() string {
 }
 
 // GetVersionInfo returns the version information for the CLI.
-func (cli *CLI[T]) GetVersionInfo() *VersionInfo[T] {
-	v := VersionInfo[T]{}
-
-	if cli.VersionInfo != nil {
-		v.Name = cli.VersionInfo.Name
-		v.Version = cli.VersionInfo.Version
-		v.Commit = cli.VersionInfo.Commit
-		v.Date = cli.VersionInfo.Date
+func GetVersionInfo(app Application, options *VersionOptions) *Version {
+	v := &Version{
+		options:     options,
+		Application: app,
+		GoVersion:   runtime.Version(),
+		Command:     filepath.Base(os.Args[0]),
+		OS:          runtime.GOOS,
+		Arch:        runtime.GOARCH,
 	}
-
-	v.cli = cli
-	v.GoVersion = runtime.Version()
-	v.Command = filepath.Base(os.Args[0])
-	v.OS = runtime.GOOS
-	v.Arch = runtime.GOARCH
-	v.Links = cli.Links
 
 	build, ok := debug.ReadBuildInfo()
 	if ok {
@@ -226,38 +209,42 @@ func (cli *CLI[T]) GetVersionInfo() *VersionInfo[T] {
 			}
 		}
 
-		if v.Name == "" {
-			v.Name = build.Main.Path
+		if v.Application.Name == "" {
+			v.Application.Name = build.Main.Path
 		}
 
-		if v.Version == "" {
-			v.Version = build.Main.Version
+		if v.Application.Version == "" {
+			v.Application.Version = build.Main.Version
 		}
 
-		if v.Commit == "" {
-			v.Commit = v.GetSetting("vcs.revision", build.Main.Sum)
+		if v.Application.Commit == "" {
+			v.Application.Commit = v.GetSetting("vcs.revision", build.Main.Sum)
 		}
 
-		if v.Date == "" {
-			v.Date = v.GetSetting("vcs.time", "unknown")
+		if v.Application.Date == "" {
+			v.Application.Date = v.GetSetting("vcs.time", "unknown")
 		}
 	}
 
-	if v.Name == "" {
-		v.Name = v.Command
+	if v.Application.Name == "" {
+		v.Application.Name = v.Command
 	}
 
-	if v.Version == "" {
-		v.Version = "unknown"
+	if v.Application.Version == "" {
+		v.Application.Version = "unknown"
 	}
 
-	if v.Commit == "" {
-		v.Commit = "unknown"
+	if v.Application.Commit == "" {
+		v.Application.Commit = "unknown"
 	}
 
-	if v.Date == "" {
-		v.Date = "unknown"
+	if v.Application.Date == "" {
+		v.Application.Date = "unknown"
 	}
 
-	return &v
+	if v.Application.Description == "" {
+		v.Application.Description = color.Sprint(v.stringBase())
+	}
+
+	return v
 }
